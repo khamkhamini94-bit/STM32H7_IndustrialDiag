@@ -1,0 +1,210 @@
+#include "drv_dev/ssd1306_driver.h"
+#include "drv_hal/i2c_driver.h"
+#include <string.h>
+#include <stdio.h>
+
+#define SSD1306_TIMEOUT_MS  50
+
+static uint8_t fb[SSD1306_WIDTH * SSD1306_PAGES]; /* 128 * 8 = 1024 bytes */
+
+/* ── 5×7 ASCII 字体 (0x20–0x5F, 大写+数字+符号) ── */
+static const uint8_t font5x7[][5] = {
+    {0x00,0x00,0x00,0x00,0x00}, /* sp */
+    {0x00,0x00,0x5F,0x00,0x00}, /* !  */
+    {0x00,0x07,0x00,0x07,0x00}, /* "  */
+    {0x14,0x7F,0x14,0x7F,0x14}, /* #  */
+    {0x24,0x2A,0x7F,0x2A,0x12}, /* $  */
+    {0x23,0x13,0x08,0x64,0x62}, /* %  */
+    {0x36,0x49,0x55,0x22,0x50}, /* &  */
+    {0x00,0x05,0x03,0x00,0x00}, /* '  */
+    {0x00,0x1C,0x22,0x41,0x00}, /* (  */
+    {0x00,0x41,0x22,0x1C,0x00}, /* )  */
+    {0x08,0x2A,0x1C,0x2A,0x08}, /* *  */
+    {0x08,0x08,0x3E,0x08,0x08}, /* +  */
+    {0x00,0x50,0x30,0x00,0x00}, /* ,  */
+    {0x08,0x08,0x08,0x08,0x08}, /* -  */
+    {0x00,0x60,0x60,0x00,0x00}, /* .  */
+    {0x20,0x10,0x08,0x04,0x02}, /* /  */
+    {0x3E,0x51,0x49,0x45,0x3E}, /* 0  */
+    {0x00,0x42,0x7F,0x40,0x00}, /* 1  */
+    {0x42,0x61,0x51,0x49,0x46}, /* 2  */
+    {0x21,0x41,0x45,0x4B,0x31}, /* 3  */
+    {0x18,0x14,0x12,0x7F,0x10}, /* 4  */
+    {0x27,0x45,0x45,0x45,0x39}, /* 5  */
+    {0x3C,0x4A,0x49,0x49,0x30}, /* 6  */
+    {0x01,0x71,0x09,0x05,0x03}, /* 7  */
+    {0x36,0x49,0x49,0x49,0x36}, /* 8  */
+    {0x06,0x49,0x49,0x29,0x1E}, /* 9  */
+    {0x00,0x36,0x36,0x00,0x00}, /* :  */
+    {0x00,0x56,0x36,0x00,0x00}, /* ;  */
+    {0x00,0x08,0x14,0x22,0x41}, /* <  */
+    {0x14,0x14,0x14,0x14,0x14}, /* =  */
+    {0x41,0x22,0x14,0x08,0x00}, /* >  */
+    {0x02,0x01,0x51,0x09,0x06}, /* ?  */
+    {0x32,0x49,0x79,0x41,0x3E}, /* @  */
+    {0x7E,0x11,0x11,0x11,0x7E}, /* A  */
+    {0x7F,0x49,0x49,0x49,0x36}, /* B  */
+    {0x3E,0x41,0x41,0x41,0x22}, /* C  */
+    {0x7F,0x41,0x41,0x22,0x1C}, /* D  */
+    {0x7F,0x49,0x49,0x49,0x41}, /* E  */
+    {0x7F,0x09,0x09,0x01,0x01}, /* F  */
+    {0x3E,0x41,0x41,0x51,0x32}, /* G  */
+    {0x7F,0x08,0x08,0x08,0x7F}, /* H  */
+    {0x00,0x41,0x7F,0x41,0x00}, /* I  */
+    {0x20,0x40,0x41,0x3F,0x01}, /* J  */
+    {0x7F,0x08,0x14,0x22,0x41}, /* K  */
+    {0x7F,0x40,0x40,0x40,0x40}, /* L  */
+    {0x7F,0x02,0x04,0x02,0x7F}, /* M  */
+    {0x7F,0x04,0x08,0x10,0x7F}, /* N  */
+    {0x3E,0x41,0x41,0x41,0x3E}, /* O  */
+    {0x7F,0x09,0x09,0x09,0x06}, /* P  */
+    {0x3E,0x41,0x51,0x21,0x5E}, /* Q  */
+    {0x7F,0x09,0x19,0x29,0x46}, /* R  */
+    {0x46,0x49,0x49,0x49,0x31}, /* S  */
+    {0x01,0x01,0x7F,0x01,0x01}, /* T  */
+    {0x3F,0x40,0x40,0x40,0x3F}, /* U  */
+    {0x1F,0x20,0x40,0x20,0x1F}, /* V  */
+    {0x7F,0x20,0x18,0x20,0x7F}, /* W  */
+    {0x63,0x14,0x08,0x14,0x63}, /* X  */
+    {0x03,0x04,0x78,0x04,0x03}, /* Y  */
+    {0x61,0x51,0x49,0x45,0x43}, /* Z  */
+    {0x00,0x00,0x7F,0x41,0x41}, /* [  */
+    {0x02,0x04,0x08,0x10,0x20}, /* \  */
+    {0x41,0x41,0x7F,0x00,0x00}, /* ]  */
+    {0x04,0x02,0x01,0x02,0x04}, /* ^  */
+    {0x40,0x40,0x40,0x40,0x40}, /* _  */
+};
+
+/* ── 内部：发单字节命令 ────────────────────────── */
+static int send_cmd(uint16_t addr, uint8_t cmd)
+{
+    uint8_t buf[] = { 0x00, cmd };
+    return I2C_Master_TransmitBlocking(addr, buf, 2, SSD1306_TIMEOUT_MS);
+}
+
+/* ── 内部：发双字节命令（命令+参数） ───────────── */
+static int send_cmd2(uint16_t addr, uint8_t cmd, uint8_t param)
+{
+    uint8_t buf[] = { 0x00, cmd, param };
+    return I2C_Master_TransmitBlocking(addr, buf, 3, SSD1306_TIMEOUT_MS);
+}
+
+/* ── 内部：发数据块 ────────────────────────────── */
+static int send_data(uint16_t addr, const uint8_t *data, uint16_t len)
+{
+    uint8_t buf[129]; /* max I2C payload + 1 for prefix */
+    while (len > 0) {
+        uint16_t chunk = len > 128 ? 128 : len;
+        buf[0] = 0x40; /* 0x40 = 数据前缀 */
+        memcpy(buf + 1, data, chunk);
+        if (I2C_Master_TransmitBlocking(addr, buf, chunk + 1, SSD1306_TIMEOUT_MS) != 0)
+            return -1;
+        data += chunk;
+        len  -= chunk;
+    }
+    return 0;
+}
+
+int SSD1306_Init(uint16_t addr)
+{
+    if (send_cmd(addr, 0xAE)  != 0) return -1; /* display off */
+    if (send_cmd2(addr, 0xD5, 0x80) != 0) return -1; /* clock div */
+    if (send_cmd2(addr, 0xA8, 0x3F) != 0) return -1; /* mux ratio = 64 */
+    if (send_cmd2(addr, 0xD3, 0x00) != 0) return -1; /* display offset = 0 */
+    if (send_cmd(addr, 0x40)  != 0) return -1; /* start line = 0 */
+    if (send_cmd2(addr, 0x8D, 0x14) != 0) return -1; /* charge pump */
+    if (send_cmd2(addr, 0x20, 0x00) != 0) return -1; /* horizontal addressing */
+    if (send_cmd(addr, 0xA1)  != 0) return -1; /* segment remap */
+    if (send_cmd(addr, 0xC8)  != 0) return -1; /* COM scan direction */
+    if (send_cmd2(addr, 0xDA, 0x12) != 0) return -1; /* COM pins config */
+    if (send_cmd2(addr, 0x81, 0x7F) != 0) return -1; /* contrast */
+    if (send_cmd2(addr, 0xD9, 0xF1) != 0) return -1; /* precharge */
+    if (send_cmd2(addr, 0xDB, 0x40) != 0) return -1; /* VCOMH level */
+    if (send_cmd(addr, 0xA4)  != 0) return -1; /* output RAM content */
+    if (send_cmd(addr, 0xA6)  != 0) return -1; /* normal color */
+    if (send_cmd(addr, 0xAF)  != 0) return -1; /* display on */
+
+    SSD1306_Clear();
+    SSD1306_Refresh(addr);
+    return 0;
+}
+
+void SSD1306_Clear(void)
+{
+    memset(fb, 0, sizeof(fb));
+}
+
+int SSD1306_Refresh(uint16_t addr)
+{
+    /* 设置列范围 0–127 */
+    send_cmd(addr, 0x21);
+    send_cmd(addr, 0x00);
+    send_cmd(addr, 0x7F);
+    /* 设置页范围 0–7 */
+    send_cmd(addr, 0x22);
+    send_cmd(addr, 0x00);
+    send_cmd(addr, 0x07);
+    /* 写数据 */
+    return send_data(addr, fb, sizeof(fb));
+}
+
+void SSD1306_SetPixel(uint8_t x, uint8_t y, uint8_t on)
+{
+    if (x >= SSD1306_WIDTH || y >= SSD1306_HEIGHT) return;
+    uint16_t idx = x + (y / 8) * SSD1306_WIDTH;
+    if (on)
+        fb[idx] |=  (1 << (y & 7));
+    else
+        fb[idx] &= ~(1 << (y & 7));
+}
+
+void SSD1306_ShowString(uint8_t x, uint8_t y, const char *str)
+{
+    while (*str && x <= SSD1306_WIDTH - 5) {
+        if (*str == '\n') {
+            x = 0;
+            y = (y + 1) & 7;
+            str++;
+            continue;
+        }
+        if (*str < 0x20 || *str > 0x5F) {
+            str++;
+            continue;
+        }
+        int ci = *str - 0x20;
+        for (int col = 0; col < 5; col++) {
+            uint8_t bits = font5x7[ci][col];
+            for (int row = 0; row < 7; row++) {
+                SSD1306_SetPixel(x + col, y * 8 + row, (bits >> row) & 1);
+            }
+        }
+        SSD1306_SetPixel(x + 5, y * 8, 0); /* 字符间距 */
+        x += 6;
+        str++;
+    }
+}
+
+void SSD1306_ShowInt(uint8_t x, uint8_t y, int32_t val)
+{
+    char buf[12];
+    snprintf(buf, sizeof(buf), "%ld", val);
+    SSD1306_ShowString(x, y, buf);
+}
+
+void SSD1306_ShowFloat(uint8_t x, uint8_t y, float val, int decimals)
+{
+    char buf[16];
+    snprintf(buf, sizeof(buf), "%.*f", decimals, val);
+    SSD1306_ShowString(x, y, buf);
+}
+
+void SSD1306_FillPage(uint8_t page, uint8_t ratio)
+{
+    if (page >= SSD1306_PAGES || ratio > 100) return;
+    uint8_t cols = (uint8_t)((uint16_t)SSD1306_WIDTH * ratio / 100);
+    uint16_t base = page * SSD1306_WIDTH;
+    for (uint8_t c = 0; c < cols; c++)
+        fb[base + c] = 0xFF;
+    for (uint8_t c = cols; c < SSD1306_WIDTH; c++)
+        fb[base + c] = 0x00;
+}

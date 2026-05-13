@@ -26,3 +26,5 @@
 #define PERIOD_HMI_REFRESH_MS       100
 #define PERIOD_CONTROL_MS           10
 
+#endif /* TASK_CONFIG_H */
+

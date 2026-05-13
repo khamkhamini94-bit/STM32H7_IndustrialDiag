@@ -28,7 +28,11 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
+#include "drv_hal/dma_driver.h"
+#include "drv_hal/adc_driver.h"
+#include "drv_hal/i2c_driver.h"
+#include "drv_hal/tim_driver.h"
+#include "drv_hal/usart_driver.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -105,7 +109,11 @@ int main(void)
   MX_USART1_UART_Init();
   MX_USART3_UART_Init();
   /* USER CODE BEGIN 2 */
-
+  DMA_Manager_Init();
+  ADC_Driver_Init();
+  I2C_Driver_Init();
+  TIM_Manager_Init();
+  USART_Drivers_Init();
   /* USER CODE END 2 */
 
   /* Init scheduler */

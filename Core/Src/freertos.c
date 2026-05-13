@@ -25,7 +25,8 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
+#include "app_tasks.h"
+#include "task_config.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -47,7 +48,7 @@
 /* USER CODE BEGIN Variables */
 
 /* USER CODE END Variables */
-/* Definitions for defaultTask */
+
 osThreadId_t defaultTaskHandle;
 const osThreadAttr_t defaultTask_attributes = {
   .name = "defaultTask",
@@ -55,9 +56,47 @@ const osThreadAttr_t defaultTask_attributes = {
   .priority = (osPriority_t) osPriorityNormal,
 };
 
+/* Application task handles */
+osThreadId_t faultTaskHandle;
+osThreadId_t sensorTaskHandle;
+osThreadId_t controlTaskHandle;
+osThreadId_t aiTaskHandle;
+osThreadId_t hmiTaskHandle;
+
+/* Application task attributes — mapped from task_config.h */
+const osThreadAttr_t faultTask_attributes = {
+  .name       = "faultTask",
+  .stack_size = STACK_FAULT_PROTECT * 4,
+  .priority   = (osPriority_t) TASK_PRIO_FAULT_PROTECT,
+};
+
+const osThreadAttr_t sensorTask_attributes = {
+  .name       = "sensorTask",
+  .stack_size = STACK_SENSOR_ACQUIRE * 4,
+  .priority   = (osPriority_t) TASK_PRIO_SENSOR_ACQUIRE,
+};
+
+const osThreadAttr_t controlTask_attributes = {
+  .name       = "controlTask",
+  .stack_size = STACK_DEVICE_CONTROL * 4,
+  .priority   = (osPriority_t) TASK_PRIO_DEVICE_CONTROL,
+};
+
+const osThreadAttr_t aiTask_attributes = {
+  .name       = "aiTask",
+  .stack_size = STACK_AI_INFERENCE * 4,
+  .priority   = (osPriority_t) TASK_PRIO_AI_INFERENCE,
+};
+
+const osThreadAttr_t hmiTask_attributes = {
+  .name       = "hmiTask",
+  .stack_size = STACK_HMI_COMM * 4,
+  .priority   = (osPriority_t) TASK_PRIO_HMI_COMM,
+};
+
 /* Private function prototypes -----------------------------------------------*/
 /* USER CODE BEGIN FunctionPrototypes */
-
+extern void AppTasks_InitRTOSObjects(void);
 /* USER CODE END FunctionPrototypes */
 
 void StartDefaultTask(void *argument);
@@ -90,12 +129,20 @@ void MX_FREERTOS_Init(void) {
   /* add queues, ... */
   /* USER CODE END RTOS_QUEUES */
 
+  /* 初始化任务间通信对象 */
+  AppTasks_InitRTOSObjects();
+
   /* Create the thread(s) */
   /* creation of defaultTask */
   defaultTaskHandle = osThreadNew(StartDefaultTask, NULL, &defaultTask_attributes);
 
   /* USER CODE BEGIN RTOS_THREADS */
-  /* add threads, ... */
+  /* Application tasks — priorities from task_config.h */
+  faultTaskHandle   = osThreadNew(StartFaultProtectTask,   NULL, &faultTask_attributes);
+  sensorTaskHandle  = osThreadNew(StartSensorAcquireTask,  NULL, &sensorTask_attributes);
+  controlTaskHandle = osThreadNew(StartDeviceControlTask,  NULL, &controlTask_attributes);
+  aiTaskHandle      = osThreadNew(StartAIInferenceTask,    NULL, &aiTask_attributes);
+  hmiTaskHandle     = osThreadNew(StartHMICommTask,        NULL, &hmiTask_attributes);
   /* USER CODE END RTOS_THREADS */
 
   /* USER CODE BEGIN RTOS_EVENTS */
@@ -126,4 +173,3 @@ void StartDefaultTask(void *argument)
 /* USER CODE BEGIN Application */
 
 /* USER CODE END Application */
-
